@@ -1,5 +1,12 @@
 # codex-reasoning-monitor
 
+Built for people who want to understand how deeply their own Codex is thinking.
+
+The tool displays the reasoning and output token counts reported for each model response,
+alongside the time, session ID, and title. This lets you compare how much reasoning Codex uses
+across responses, including while it works autonomously through multiple tool calls.
+Reasoning token counts indicate the amount of reported reasoning, not its quality or correctness.
+
 Linux, Windows, and macOS stdout monitor for Codex sessions. It observes Codex writer-lock lifecycle,
 resolves each session's rollout path and title from `state_5.sqlite`, then follows only the active
 JSONL files from their current offsets.
