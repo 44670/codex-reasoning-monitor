@@ -30,6 +30,8 @@ func run() int {
 	flags.SetOutput(os.Stderr)
 	codexHome := flags.String("codex-home", defaultHome, "Codex state directory")
 	colorMode := flags.String("color", "auto", "color output: auto, always, or never")
+	webEnabled := flags.Bool("web", true, "serve the local dashboard at http://127.0.0.1:5927")
+	logDatabase := flags.String("db", "", "history database (default: data/log.sqlite beside the executable)")
 	showVersion := flags.Bool("version", false, "print version and exit")
 	flags.Usage = func() {
 		fmt.Fprintf(flags.Output(), "Usage: %s [options]\n\n", flags.Name())
@@ -65,6 +67,36 @@ func run() int {
 		return 1
 	}
 	defer monitor.Close()
+	logPath := *logDatabase
+	if logPath == "" {
+		executable, err := os.Executable()
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "codex-reasoning-monitor: locate executable: %v\n", err)
+			return 1
+		}
+		logPath = filepath.Join(filepath.Dir(executable), "data", "log.sqlite")
+	}
+	logPath, err = filepath.Abs(logPath)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "codex-reasoning-monitor: resolve history database: %v\n", err)
+		return 1
+	}
+	monitor.dashboard, err = newPersistentDashboard(logPath, os.Stderr)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "codex-reasoning-monitor: open history database: %v\n", err)
+		return 1
+	}
+	defer monitor.dashboard.Close()
+	fmt.Fprintln(os.Stderr, "codex-reasoning-monitor: history database "+logPath)
+	if *webEnabled {
+		server, err := monitor.dashboard.serve()
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "codex-reasoning-monitor: start dashboard: %v (use --web=false for console only)\n", err)
+			return 1
+		}
+		defer server.Close()
+		printer.dashboardNotice(os.Stderr)
+	}
 
 	// Go maps Windows Ctrl+C/Break to Interrupt, and console close/logoff to SIGTERM.
 	ctx, cancel := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)

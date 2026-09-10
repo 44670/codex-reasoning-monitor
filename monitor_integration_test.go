@@ -99,7 +99,7 @@ func (f *integrationFixture) start(color string) {
 	}
 	binary, err := filepath.Abs(name)
 	f.must(err)
-	cmd := exec.Command(binary, "--codex-home", f.home, "--color", color)
+	cmd := exec.Command(binary, "--codex-home", f.home, "--color", color, "--web=false", "--db", filepath.Join(f.home, "data", "log.sqlite"))
 	cmd.Stdout, cmd.Stderr = &f.out, &f.err
 	f.must(cmd.Start())
 	done := make(chan error, 1)

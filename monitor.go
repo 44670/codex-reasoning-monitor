@@ -61,6 +61,7 @@ type monitoredSession struct {
 }
 
 type monitor struct {
+	dashboard     *dashboard
 	lockDirectory string
 	watcher       *fsnotify.Watcher
 	database      *sql.DB
@@ -284,6 +285,9 @@ func (m *monitor) queueActivation(id string, kind activationKind, detectedAt tim
 	}
 	m.pending[id] = pending
 	m.tryActivate(id, detectedAt)
+	if m.pending[id] != nil {
+		m.dashboard.record("WAITING", id, "", detectedAt, tokenCount{})
+	}
 }
 
 func (m *monitor) tryActivate(id string, now time.Time) {
@@ -345,9 +349,17 @@ func (m *monitor) activate(id string, metadata threadMetadata, pending *pendingS
 	if pending.initialFile != nil && os.SameFile(pending.initialFile, info) {
 		session.offset = pending.initialFile.Size()
 	}
+	if saved, ok := m.dashboard.resumePosition(id); ok {
+		if saved.matches(file) {
+			session.offset = saved.Offset
+		} else {
+			session.offset = 0
+		}
+	}
 	m.sessions[id] = session
 	m.pathToSession[path] = id
 	m.printer.lifecycle(pending.detectedAt, string(pending.kind), id, session.title)
+	m.dashboard.record(string(pending.kind), id, session.title, pending.detectedAt, tokenCount{})
 	// Catch appends that landed between the initial stat and installation of the watch.
 	m.readAvailable(session)
 	return nil
@@ -409,6 +421,7 @@ func (m *monitor) deactivate(id string, at time.Time) {
 		}
 		m.printer.lifecycle(pending.detectedAt, string(pending.kind), id, title)
 		m.printer.lifecycle(at, "STOP", id, title)
+		m.dashboard.record("STOP", id, title, at, tokenCount{})
 		delete(m.pending, id)
 		return
 	}
@@ -422,6 +435,7 @@ func (m *monitor) deactivate(id string, at time.Time) {
 		session.title = metadata.title
 	}
 	m.printer.lifecycle(at, "STOP", id, session.title)
+	m.dashboard.record("STOP", id, session.title, at, tokenCount{})
 	m.detachRollout(session)
 	delete(m.sessions, id)
 }
@@ -490,7 +504,7 @@ func (m *monitor) consumeChunk(session *monitoredSession, chunk []byte) {
 		}
 		if len(session.partial)+newline <= maxBufferedLine {
 			session.partial = append(session.partial, chunk[:newline]...)
-			m.processLine(session, session.partial)
+			m.processLine(session, session.partial, session.offset-int64(len(chunk))+int64(newline)+1)
 		}
 		session.partial = session.partial[:0]
 		chunk = chunk[newline+1:]
@@ -507,13 +521,13 @@ func (m *monitor) consumeChunk(session *monitoredSession, chunk []byte) {
 			return
 		}
 		if newline <= maxBufferedLine {
-			m.processLine(session, chunk[:newline])
+			m.processLine(session, chunk[:newline], session.offset-int64(len(chunk))+int64(newline)+1)
 		}
 		chunk = chunk[newline+1:]
 	}
 }
 
-func (m *monitor) processLine(session *monitoredSession, line []byte) {
+func (m *monitor) processLine(session *monitoredSession, line []byte, endOffset int64) {
 	line = bytesTrimTrailingCarriageReturn(line)
 	count, ok := extractTokenCount(line)
 	if !ok {
@@ -522,7 +536,14 @@ func (m *monitor) processLine(session *monitoredSession, line []byte) {
 	if metadata, err := m.lookupThread(session.id); err == nil {
 		session.title = metadata.title
 	}
-	m.printer.tokens(count.timestamp, session.id, session.title, count)
+	m.printer.tokens(count.timestamp, session.title, count)
+	prefix, length, err := filePrefix(session.file, 128)
+	if err != nil {
+		fmt.Fprintf(m.errOut, "codex-reasoning-monitor: fingerprint rollout: %v\n", err)
+		return
+	}
+	source := &sourcePosition{Path: session.rolloutPath, Offset: endOffset, PrefixLength: length, PrefixHash: prefix}
+	m.dashboard.recordSource("TOKENS", session.id, session.title, count.timestamp, count, tokenEventID(session.id, endOffset, line), source)
 }
 
 func (m *monitor) resynchronize() {

@@ -55,6 +55,19 @@ func (p *printer) Close() {
 	}
 }
 
+func (p *printer) dashboardNotice(out io.Writer) {
+	fmt.Fprintln(out)
+	fmt.Fprintln(out, p.paint(ansiCyan, "  ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"))
+	fmt.Fprintln(out, p.paint(ansiGreen, "  ◉  CODEX 本地智力雷达 / LOCAL INTELLIGENCE RADAR"))
+	fmt.Fprintln(out, "     打开看板 / OPEN DASHBOARD")
+	fmt.Fprintln(out)
+	fmt.Fprintln(out, "     "+p.paint(ansiCyan, "http://"+dashboardAddress))
+	fmt.Fprintln(out)
+	fmt.Fprintln(out, "     Ctrl/Cmd + 点击链接 / click the URL")
+	fmt.Fprintln(out, p.paint(ansiCyan, "  ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"))
+	fmt.Fprintln(out)
+}
+
 func (p *printer) lifecycle(at time.Time, action string, id string, title string) {
 	style := ansiYellow
 	switch action {
@@ -75,7 +88,7 @@ func (p *printer) lifecycle(at time.Time, action string, id string, title string
 	)
 }
 
-func (p *printer) tokens(at time.Time, id string, title string, count tokenCount) {
+func (p *printer) tokens(at time.Time, title string, count tokenCount) {
 	reasoningStyle := ansiYellow
 	if count.reasoning == 516 || count.reasoning == 1_034 || count.reasoning == 1_552 {
 		reasoningStyle = ansiRed
@@ -84,10 +97,9 @@ func (p *printer) tokens(at time.Time, id string, title string, count tokenCount
 	}
 	fmt.Fprintf(
 		p.out,
-		"%s  %s  %s  %q  %s  %s\n",
+		"%s  %s  %q  %s  %s\n",
 		p.paint(ansiDim, displayTime(at)),
 		p.paint(ansiBlue, "TOKENS"),
-		p.paint(ansiCyan, id),
 		sanitizeTitle(title),
 		p.paint(ansiCyan, "output="+formatUint(count.output)),
 		p.paint(reasoningStyle, "reasoning="+formatUint(count.reasoning)),
