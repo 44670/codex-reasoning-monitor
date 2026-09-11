@@ -51,6 +51,8 @@ const words = {
     signalTitle: "Reasoning waveform",
     reasoningShort: "Reasoning",
     outputShort: "Output",
+    averageReasoning: "Mean reasoning",
+    averageOutput: "Mean output",
     chartNote: "All sessions · grouped by arrival time",
     radarLabel: "SESSION RADAR",
     radarTitle: "In your orbit",
@@ -89,8 +91,8 @@ const words = {
     minutesAgo: "{n}m ago",
     hoursAgo: "{n}h ago",
     justNow: "just now",
-    perBucket: "tokens / {n}s",
-    windowTotal: "{n} reasoning",
+    perBucket: "tokens / response · {n}s buckets",
+    windowTotal: "Mean reasoning {n} / response",
     chartEmpty: "Your next response starts here.",
     chartEmptyNote: "Token events will appear as Codex reports them.",
     sessionsEmpty: "Your radar is ready.",
@@ -126,7 +128,7 @@ const words = {
     range15: "Last 15 minutes",
     range60: "Last hour",
     chartAria:
-      "Token activity chart. {r} reasoning tokens and {o} output tokens in the selected period.",
+      "Mean tokens per response in the selected period: {r} reasoning and {o} output tokens.",
   },
   zh: {
     brand: "Codex 本地智力雷达",
@@ -176,6 +178,8 @@ const words = {
     signalTitle: "推理波形",
     reasoningShort: "推理",
     outputShort: "输出",
+    averageReasoning: "平均推理 tokens",
+    averageOutput: "平均输出 tokens",
     chartNote: "全部会话 · 按接收时间分组",
     radarLabel: "SESSION RADAR",
     radarTitle: "你的会话轨道",
@@ -212,8 +216,8 @@ const words = {
     minutesAgo: "{n} 分钟前",
     hoursAgo: "{n} 小时前",
     justNow: "刚刚",
-    perBucket: "token / {n} 秒",
-    windowTotal: "{n} 推理 token",
+    perBucket: "token / 响应 · 每 {n} 秒分组",
+    windowTotal: "每次平均 {n} 推理 token",
     chartEmpty: "下一次响应，从这里亮起。",
     chartEmptyNote: "Codex 报告 token 用量后，活动将在此呈现。",
     sessionsEmpty: "雷达已就绪。",
@@ -248,7 +252,7 @@ const words = {
     range15: "最近 15 分钟",
     range60: "最近一小时",
     chartAria:
-      "Token 活动图。所选时段内有 {r} 个推理 token，{o} 个输出 token。",
+      "单次响应平均 token 图。所选时段平均推理 {r}，平均输出 {o}。",
   },
 };
 let lang;
@@ -509,7 +513,12 @@ function renderDepth(force) {
   lastDepthSequence = key;
 }
 function renderChart() {
-  chartPoints = data?.series || [];
+  const buckets = data?.series || [];
+  chartPoints = buckets.map((p) => ({
+    ...p,
+    output: p.responses ? p.output / p.responses : 0,
+    reasoning: p.responses ? p.reasoning / p.responses : 0,
+  }));
   const group =
     (data?.step || { 15: 10, 60: 60, 1440: 300, 10080: 3600 }[range]) / 10;
   const points = chartPoints,
@@ -585,17 +594,18 @@ function renderChart() {
     svg += `<path d="${area()}" fill="url(#mint-area)"/><path d="${path("output")}" fill="none" stroke="#a89aff" stroke-width="2" vector-effect="non-scaling-stroke" opacity=".75"/><path d="${path("reasoning")}" fill="none" stroke="#dcff63" stroke-width="2" vector-effect="non-scaling-stroke"/><line id="chart-crosshair" x1="0" x2="0" y1="${top}" y2="${y(0)}" stroke="#aec4b4" stroke-dasharray="3 4" visibility="hidden"/>`;
   }
   svg += "</svg>";
-  const sumR = points.reduce((n, p) => n + p.reasoning, 0),
-    sumO = points.reduce((n, p) => n + p.output, 0);
-  if (!sumR && !sumO)
+  const responses = buckets.reduce((n, p) => n + p.responses, 0),
+    meanR = responses ? buckets.reduce((n, p) => n + p.reasoning, 0) / responses : 0,
+    meanO = responses ? buckets.reduce((n, p) => n + p.output, 0) / responses : 0;
+  if (!responses)
     svg += `<div class="chart-empty"><strong>${t("chartEmpty")}</strong><span>${t("chartEmptyNote")}</span></div>`;
   $("#chart").innerHTML = svg;
   $("#chart").setAttribute(
     "aria-label",
-    t("chartAria", { r: number(sumR), o: number(sumO) }),
+    t("chartAria", { r: responses ? number(meanR) : "—", o: responses ? number(meanO) : "—" }),
   );
   $("#bucket-label").textContent = t("perBucket", { n: group * 10 });
-  $("#chart-window-total").textContent = t("windowTotal", { n: number(sumR) });
+  $("#chart-window-total").textContent = t("windowTotal", { n: responses ? number(meanR) : "—" });
 }
 function sparkline(values, large = false) {
   const vals = values.length ? values : [0, 0],
@@ -1115,7 +1125,7 @@ $("#chart").addEventListener("pointermove", (e) => {
   }
   const tip = $("#chart-tooltip");
   tip.hidden = false;
-  tip.innerHTML = `${chartTime(p.at * 1000, true)}<br><span class="mint">${t("reasoningShort")} ${number(p.reasoning)}</span><br><span class="purple">${t("outputShort")} ${number(p.output)}</span>`;
+  tip.innerHTML = `${chartTime(p.at * 1000, true)}<br><span class="mint">${t("averageReasoning")} ${p.responses ? number(p.reasoning) : "—"}</span><br><span class="purple">${t("averageOutput")} ${p.responses ? number(p.output) : "—"}</span>`;
   tip.style.left =
     Math.min(e.clientX + 16, window.innerWidth - tip.offsetWidth - 12) + "px";
   tip.style.top = Math.max(8, e.clientY - tip.offsetHeight - 12) + "px";
